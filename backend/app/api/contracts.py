@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -9,7 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.db import get_session
-from app.models import Analysis, Contract, Extraction
+from app.models import Analysis, Contract, ContractStatus, Extraction
+from app.pipeline.extraction import FIELD_VALIDATORS
 from app.pipeline.runner import run_pipeline
 from app.schemas import (
     AnalysisDetail,
@@ -19,6 +21,7 @@ from app.schemas import (
     ContractStatusResponse,
     ExtractionDetail,
     FieldState,
+    PatchFieldsRequest,
 )
 
 router = APIRouter(prefix="/api/v1/contracts", tags=["contracts"])
@@ -152,6 +155,68 @@ def _analysis_detail(analysis: Analysis) -> AnalysisDetail:
         summary=analysis.summary,
         ai_analysis=analysis.ai_analysis,
     )
+
+
+@router.patch("/{contract_id}/fields", response_model=ContractDetail)
+async def patch_fields(
+    contract_id: str, payload: PatchFieldsRequest, session: SessionDep
+) -> ContractDetail:
+    contract = (
+        await session.execute(
+            select(Contract)
+            .where(Contract.id == contract_id)
+            .options(selectinload(Contract.extractions).selectinload(Extraction.fields))
+        )
+    ).scalar_one_or_none()
+    if contract is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Contrato não encontrado.")
+    if contract.status is ContractStatus.PROCESSING:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="Contrato ainda em processamento; aguarde para corrigir.",
+        )
+    extraction = _latest_extraction(contract)
+    if extraction is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Contrato sem extração para corrigir.")
+
+    fields_by_name = {f.field_name: f for f in extraction.fields}
+
+    # Validação atômica: qualquer campo inválido → 422 e nada é aplicado.
+    errors: dict[str, str] = {}
+    corrections: dict[str, str | None] = {}
+    for field_name, value in payload.fields.items():
+        field = fields_by_name.get(field_name)
+        if field is None:
+            errors[field_name] = "campo desconhecido"
+            continue
+        if value is None:
+            corrections[field_name] = None  # remove a correção (volta ao valor do LLM)
+            continue
+        validator = FIELD_VALIDATORS.get(field_name)
+        if validator is None:
+            if not value.strip():
+                errors[field_name] = "valor não pode ser vazio; use null para limpar a correção"
+            else:
+                corrections[field_name] = value.strip()
+            continue
+        outcome = validator(value)
+        if not outcome.is_valid:
+            errors[field_name] = outcome.error or "valor inválido"
+        else:
+            corrections[field_name] = outcome.normalized
+
+    if errors:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail={"fields": errors})
+
+    now = datetime.now(UTC)
+    for field_name, corrected in corrections.items():
+        field = fields_by_name[field_name]
+        # llm_value original nunca é tocado — auditoria/comparação na UI.
+        field.corrected_value = corrected
+        field.corrected_at = now if corrected is not None else None
+    await session.commit()
+
+    return await get_contract(contract_id, session)
 
 
 @router.get("/{contract_id}/status", response_model=ContractStatusResponse)

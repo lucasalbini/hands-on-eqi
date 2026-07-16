@@ -26,6 +26,8 @@ _MONTHS_PT_BR: dict[str, int] = {
 _NUMERIC_PATTERN = re.compile(r"^(\d{1,2})([/\-.])(\d{1,2})\2(\d{4})$")
 # Forma cartorial: "12 de março de 2024"
 _PROSE_PATTERN = re.compile(r"^(\d{1,2})\s+de\s+([a-zçã]+)\s+de\s+(\d{4})$", re.IGNORECASE)
+# ISO aaaa-mm-dd (correções vindas de <input type="date"> da UI)
+_ISO_PATTERN = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 
 
 def parse_date_br(raw: str, max_year: int | None = None) -> ValidationResult:
@@ -39,6 +41,12 @@ def parse_date_br(raw: str, max_year: int | None = None) -> ValidationResult:
         max_year = date.today().year + 1
 
     text = raw.strip()
+
+    iso_match = _ISO_PATTERN.match(text)
+    if iso_match:
+        return _build_result(
+            int(iso_match.group(3)), int(iso_match.group(2)), int(iso_match.group(1)), max_year
+        )
 
     numeric_match = _NUMERIC_PATTERN.match(text)
     if numeric_match:
