@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, prod]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Instalar dependências
+        run: uv sync --frozen
+      - name: Lint (ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Type check (mypy --strict)
+        run: uv run mypy --strict app
+      - name: Testes + coverage (mínimo 80%)
+        run: uv run pytest --cov=app --cov-fail-under=80
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # O frontend nasce na issue #12; até lá os steps abaixo são pulados.
+      - name: Detectar frontend
+        id: detect
+        run: echo "exists=$([ -f frontend/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.exists == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependências
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm ci
+      - name: Lint
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm run lint
+      - name: Build
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm run build
+      - name: Testes
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm test
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Pre-commit (ruff, mypy, detect-secrets)
+        run: |
+          cd backend && uv sync --frozen && cd ..
+          uvx pre-commit run --all-files --show-diff-on-failure
