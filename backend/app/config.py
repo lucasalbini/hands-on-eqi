@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     litellm_api_key: str = "sk-litellm-change-me"
     extraction_model: str = "extraction-model"
     analysis_model: str = "analysis-model"
+    extraction_prompt_version: str = "extraction_v1"
+    analysis_prompt_version: str = "analysis_v1"
 
 
 settings = Settings()
