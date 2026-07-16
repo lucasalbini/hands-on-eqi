@@ -28,3 +28,6 @@ data/
 .idea/
 .vscode/
 *.swp
+
+# Claude Code (worktrees de agents, estado local)
+.claude/
