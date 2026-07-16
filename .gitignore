@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+
+# Dados locais (SQLite + uploads)
+data/
+
+# Segredos e ambiente
+.env
+.env.local
+.env.*.local
+
+# Editores
+.idea/
+.vscode/
+*.swp
