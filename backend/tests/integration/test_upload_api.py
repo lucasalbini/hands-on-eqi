@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import httpx
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,16 @@ from app.models import Contract, ContractStatus
 
 PDF_MIME = "application/pdf"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+@pytest.fixture(autouse=True)
+def stub_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Estes testes cobrem a API de upload; o pipeline real é testado à parte."""
+
+    async def noop(contract_id: str) -> None:
+        return None
+
+    monkeypatch.setattr("app.api.contracts.run_pipeline", noop)
 
 
 async def _upload(

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
+from app import db
 from app.config import settings
 from app.db import Base, get_session
 from app.main import create_app
@@ -45,6 +46,8 @@ async def client(
     monkeypatch.setattr(settings, "upload_dir", tmp_path_factory.mktemp("uploads"))
 
     factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    # O pipeline (BackgroundTask) abre a própria sessão via db.session_factory.
+    monkeypatch.setattr(db, "session_factory", factory)
 
     async def override_get_session() -> AsyncIterator[AsyncSession]:
         async with factory() as session:
