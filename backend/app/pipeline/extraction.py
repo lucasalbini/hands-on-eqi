@@ -6,10 +6,25 @@ from app.config import settings
 from app.llm.client import structured_completion
 from app.llm.prompt_loader import load_prompt
 from app.models import ExtractedField
-from app.schemas import ExtractionResult
+from app.schemas import ContractType, ExtractionResult
 from app.validators import ValidationResult, parse_date_br, validate_cnpj, validate_uf
 
+
+def validate_contract_type(raw: str) -> ValidationResult:
+    """Pertinência ao enum de tipos. Na extração é redundante (schema garante);
+    existe para as correções do usuário passarem pela mesma régua."""
+    value = raw.strip()
+    for contract_type in ContractType:
+        if value == contract_type.value:
+            return ValidationResult(is_valid=True, normalized=contract_type.value, error=None)
+    options = ", ".join(c.value for c in ContractType)
+    return ValidationResult(
+        is_valid=False, normalized=None, error=f"tipo de contrato inválido; use um de: {options}"
+    )
+
+
 FIELD_VALIDATORS: dict[str, Callable[[str], ValidationResult]] = {
+    "contract_type": validate_contract_type,
     "issue_date": parse_date_br,
     "provider.cnpj": validate_cnpj,
     "provider.uf": validate_uf,
