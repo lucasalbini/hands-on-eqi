@@ -29,8 +29,8 @@ jobs:
           uv run ruff format --check .
       - name: Type check (mypy --strict)
         run: uv run mypy --strict app
-      - name: Testes + coverage (mínimo 80%)
-        run: uv run pytest --cov=app --cov-fail-under=80
+      - name: Testes + coverage (mínimo 90%)
+        run: uv run pytest --cov=app --cov-fail-under=90
 
   frontend:
     runs-on: ubuntu-latest
