@@ -3,6 +3,15 @@
 export type ContractStatus = "processing" | "completed" | "failed";
 export type PipelineStage = "parse" | "extract" | "analyze";
 
+export const CONTRACT_TYPES = [
+  "Desenvolvimento de Software",
+  "Cloud",
+  "Suporte",
+  "Cibersegurança",
+  "App Mobile",
+  "Outro",
+] as const;
+
 export interface ContractCreated {
   id: string;
   status: ContractStatus;
