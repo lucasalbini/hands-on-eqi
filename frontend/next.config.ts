@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 // Proxy /api → backend: evita CORS e mantém a URL do backend fora do bundle.
 // Em docker compose: BACKEND_URL=http://backend:8000; dev local: default abaixo.
 const nextConfig: NextConfig = {
+  output: "standalone", // build enxuto para a imagem Docker
   async rewrites() {
     return [
       {

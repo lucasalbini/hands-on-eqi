@@ -1,0 +1,21 @@
+# Config do LiteLLM Proxy. A chave da OpenRouter existe SÓ neste container
+# (injetada via env OPENROUTER_API_KEY). O backend fala com o proxy usando a
+# master_key e referencia os aliases abaixo — trocar de modelo é editar aqui.
+
+model_list:
+  - model_name: extraction-model
+    litellm_params:
+      model: openrouter/anthropic/claude-haiku-4.5
+      api_key: os.environ/OPENROUTER_API_KEY  # pragma: allowlist secret
+  - model_name: analysis-model
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-5
+      api_key: os.environ/OPENROUTER_API_KEY  # pragma: allowlist secret
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  # Expõe custo, tokens e latência por modelo em /metrics (scrapeado pelo Prometheus).
+  callbacks: ["prometheus"]
+  drop_params: true
