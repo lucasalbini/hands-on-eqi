@@ -193,11 +193,15 @@ Aplicação de análise de contratos: o usuário faz upload de um contrato (PDF/
 ## 14. Estado da Implementação
 
 ### 14.1 Entregue ✅
-- Scaffold do monorepo, pre-commit, branches protegidas (#1, PR #19)
-- CI backend/frontend/secrets (#2, PR #20)
+- Scaffold, pre-commit, branches protegidas (#1) e CI backend/frontend/secrets (#2)
+- Modelos + schemas + banco (#4); validadores CNPJ/UF/data (#5); parsing PDF/DOCX (#6); cliente LiteLLM + prompts versionados (#7)
+- API upload/status/lista (#8); pipeline de extração (#9); análise + GET completo (#10); PATCH de correções (#11)
+- Frontend: scaffold (#12), home upload/lista (#13), detalhe + correção inline + análise (#14/#15)
+- docker-compose com LiteLLM (#16); observabilidade structlog + Prometheus + Grafana (#17)
+- README, E2E, teste de injection, coverage ≥90% (#18)
 
 ### 14.2 Pendente dentro deste ADR
-- Issues #4–#18 (backend core, pipeline, frontend, infra, observabilidade)
+- Nada. Escopo do ADR entregue.
 
 ### 14.3 Fora de escopo
 - OCR de PDFs escaneados; autenticação de usuários; reprocessamento (D2); migrations (Alembic)

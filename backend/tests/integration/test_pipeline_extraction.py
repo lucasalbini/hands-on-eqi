@@ -36,9 +36,11 @@ VALID_EXTRACTION = {
 }
 
 
-async def _upload_fixture(client: httpx.AsyncClient, filename: str = "contrato_minimo.pdf") -> str:
+async def _upload_fixture(
+    client: httpx.AsyncClient, filename: str = "contrato_minimo.pdf", mime: str = PDF_MIME
+) -> str:
     data = (FIXTURES / filename).read_bytes()
-    response = await client.post("/api/v1/contracts", files={"file": (filename, data, PDF_MIME)})
+    response = await client.post("/api/v1/contracts", files={"file": (filename, data, mime)})
     assert response.status_code == 202
     contract_id: str = response.json()["id"]
     return contract_id
