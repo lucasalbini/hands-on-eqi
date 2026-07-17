@@ -1,10 +1,8 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,30 +36,6 @@ VALID_EXTRACTION = {
 }
 
 
-class FakeLLM:
-    """Substitui o AsyncOpenAI atrás de structured_completion, sem rede."""
-
-    def __init__(self, contents: list[str | None]) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self._contents = contents
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
-
-    async def _create(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        content = self._contents[min(len(self.calls) - 1, len(self._contents) - 1)]
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
-
-
-@pytest.fixture
-def fake_llm(monkeypatch: pytest.MonkeyPatch) -> Any:
-    def install(contents: list[str | None]) -> FakeLLM:
-        fake = FakeLLM(contents)
-        monkeypatch.setattr("app.llm.client.get_client", lambda: fake)
-        return fake
-
-    return install
-
-
 async def _upload_fixture(client: httpx.AsyncClient, filename: str = "contrato_minimo.pdf") -> str:
     data = (FIXTURES / filename).read_bytes()
     response = await client.post("/api/v1/contracts", files={"file": (filename, data, PDF_MIME)})
@@ -73,19 +47,19 @@ async def _upload_fixture(client: httpx.AsyncClient, filename: str = "contrato_m
 async def test_pipeline_persists_raw_text_and_extraction(
     client: httpx.AsyncClient, db_session: AsyncSession, fake_llm: Any
 ) -> None:
+    # 1ª resposta: extração; a última repete para a chamada de análise (#10),
+    # que falha na validação — irrelevante aqui: extração persiste antes.
     llm = fake_llm([json.dumps(VALID_EXTRACTION)])
     contract_id = await _upload_fixture(client)
 
     contract = await db_session.get(Contract, contract_id)
     assert contract is not None
-    assert contract.status is ContractStatus.PROCESSING  # análise (#10) ainda não roda
-    assert contract.current_stage is PipelineStage.ANALYZE
     assert contract.raw_text is not None and "DO OBJETO" in contract.raw_text
 
     extraction = (await db_session.execute(select(Extraction))).scalar_one()
     assert extraction.prompt_version == "extraction_v1"
     assert extraction.raw_llm_output["contract_type"] == "Desenvolvimento de Software"
-    assert len(llm.calls) == 1
+    assert llm.calls[0]["temperature"] == 0.0
 
 
 async def test_extraction_call_uses_temperature_zero_and_contract_text(

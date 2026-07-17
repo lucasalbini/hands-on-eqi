@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import db
 from app.config import settings
-from app.models import Contract, ContractStatus, Extraction, PipelineStage
+from app.models import Analysis, Contract, ContractStatus, Extraction, PipelineStage
+from app.pipeline.analysis import run_analysis
 from app.pipeline.extraction import build_extracted_fields, flatten_extraction, run_extraction
 from app.pipeline.parsing import parse_document
 
@@ -28,12 +29,11 @@ async def run_pipeline(contract_id: str) -> None:
 
         try:
             await _stage_parse(session, contract)
-            await _stage_extract(session, contract)
+            extraction = await _stage_extract(session, contract)
+            await _stage_analyze(session, contract, extraction)
         except Exception as exc:
             await _fail(session, contract, exc)
             return
-
-        # Estágio de análise entra na issue #10; contrato segue em processing.
 
 
 async def _stage_parse(session: AsyncSession, contract: Contract) -> None:
@@ -45,7 +45,7 @@ async def _stage_parse(session: AsyncSession, contract: Contract) -> None:
     await session.commit()
 
 
-async def _stage_extract(session: AsyncSession, contract: Contract) -> None:
+async def _stage_extract(session: AsyncSession, contract: Contract) -> Extraction:
     contract.current_stage = PipelineStage.EXTRACT
     await session.commit()
 
@@ -62,6 +62,32 @@ async def _stage_extract(session: AsyncSession, contract: Contract) -> None:
     session.add(extraction)
     # Persistido antes da análise: falha posterior não perde a extração.
     contract.current_stage = PipelineStage.ANALYZE
+    await session.commit()
+    return extraction
+
+
+async def _stage_analyze(session: AsyncSession, contract: Contract, extraction: Extraction) -> None:
+    assert contract.raw_text is not None
+    # Só valores confiáveis entram no contexto da análise: corrigido/normalizado,
+    # ou bruto válido. Campo inválido ou ausente fica de fora.
+    metadata = {
+        field.field_name: field.effective_value
+        for field in extraction.fields
+        if field.effective_value is not None
+    }
+    result, prompt_version = await run_analysis(contract.raw_text, metadata)
+
+    session.add(
+        Analysis(
+            contract_id=contract.id,
+            prompt_version=prompt_version,
+            model=settings.analysis_model,
+            summary=result.summary,
+            ai_analysis=result.ai_analysis.model_dump(mode="json"),
+        )
+    )
+    contract.status = ContractStatus.COMPLETED
+    contract.current_stage = None
     await session.commit()
 
 

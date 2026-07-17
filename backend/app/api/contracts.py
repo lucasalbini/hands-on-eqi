@@ -5,12 +5,21 @@ import anyio
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.db import get_session
-from app.models import Contract
+from app.models import Analysis, Contract, Extraction
 from app.pipeline.runner import run_pipeline
-from app.schemas import ContractCreated, ContractListItem, ContractStatusResponse
+from app.schemas import (
+    AnalysisDetail,
+    ContractCreated,
+    ContractDetail,
+    ContractListItem,
+    ContractStatusResponse,
+    ExtractionDetail,
+    FieldState,
+)
 
 router = APIRouter(prefix="/api/v1/contracts", tags=["contracts"])
 
@@ -61,10 +70,28 @@ async def upload_contract(
     return ContractCreated(id=contract.id, status=contract.status)
 
 
+def _latest_extraction(contract: Contract) -> Extraction | None:
+    return max(contract.extractions, key=lambda e: e.id, default=None)
+
+
+def _effective_contract_type(contract: Contract) -> str | None:
+    extraction = _latest_extraction(contract)
+    if extraction is None:
+        return None
+    field = next((f for f in extraction.fields if f.field_name == "contract_type"), None)
+    return field.effective_value if field else None
+
+
 @router.get("", response_model=list[ContractListItem])
 async def list_contracts(session: SessionDep) -> list[ContractListItem]:
     contracts = (
-        (await session.execute(select(Contract).order_by(Contract.created_at.desc())))
+        (
+            await session.execute(
+                select(Contract)
+                .options(selectinload(Contract.extractions).selectinload(Extraction.fields))
+                .order_by(Contract.created_at.desc())
+            )
+        )
         .scalars()
         .all()
     )
@@ -74,11 +101,57 @@ async def list_contracts(session: SessionDep) -> list[ContractListItem]:
             original_filename=c.original_filename,
             status=c.status,
             current_stage=c.current_stage,
-            contract_type=None,  # preenchido quando a extração existir (issue #10)
+            contract_type=_effective_contract_type(c),
             created_at=c.created_at,
         )
         for c in contracts
     ]
+
+
+@router.get("/{contract_id}", response_model=ContractDetail)
+async def get_contract(contract_id: str, session: SessionDep) -> ContractDetail:
+    contract = (
+        await session.execute(
+            select(Contract)
+            .where(Contract.id == contract_id)
+            .options(
+                selectinload(Contract.extractions).selectinload(Extraction.fields),
+                selectinload(Contract.analyses),
+            )
+        )
+    ).scalar_one_or_none()
+    if contract is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Contrato não encontrado.")
+
+    extraction = _latest_extraction(contract)
+    analysis = max(contract.analyses, key=lambda a: a.id, default=None)
+    return ContractDetail(
+        id=contract.id,
+        original_filename=contract.original_filename,
+        status=contract.status,
+        current_stage=contract.current_stage,
+        error_message=contract.error_message,
+        created_at=contract.created_at,
+        extraction=_extraction_detail(extraction) if extraction else None,
+        analysis=_analysis_detail(analysis) if analysis else None,
+    )
+
+
+def _extraction_detail(extraction: Extraction) -> ExtractionDetail:
+    return ExtractionDetail(
+        prompt_version=extraction.prompt_version,
+        model=extraction.model,
+        fields={f.field_name: FieldState.model_validate(f) for f in extraction.fields},
+    )
+
+
+def _analysis_detail(analysis: Analysis) -> AnalysisDetail:
+    return AnalysisDetail(
+        prompt_version=analysis.prompt_version,
+        model=analysis.model,
+        summary=analysis.summary,
+        ai_analysis=analysis.ai_analysis,
+    )
 
 
 @router.get("/{contract_id}/status", response_model=ContractStatusResponse)
