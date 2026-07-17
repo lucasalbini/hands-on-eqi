@@ -50,7 +50,7 @@ async def upload_contract(
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Arquivo acima do limite de 20 MB.",
         )
 
