@@ -9,5 +9,10 @@ scrape_configs:
 
   - job_name: litellm
     metrics_path: /metrics
+    # O /metrics do LiteLLM exige a master key; o token é injetado via arquivo
+    # montado a partir do .env (nunca vai para o git).
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/litellm_token
     static_configs:
       - targets: ["litellm:4000"]
